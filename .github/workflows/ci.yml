@@ -1,0 +1,145 @@
+name: CI-Backend
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+jobs:
+  compile:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: hostname
+
+# Make sure you create gh secret to host the vault token
+  get-sonar-passwrd:
+    runs-on: self-hosted
+    needs: [compile]
+    steps:
+      - name: Import Secrets
+        id: import-secrets
+        uses: hashicorp/vault-action@v2
+        with:
+            url: https://vault.expense.internal:8200
+            token: ${{ secrets.VAULT_TOKEN }}
+            tlsSkipVerify: true
+            secrets: |
+                infra-secrets/data/sonarqube password | sonar_password;
+
+  static-code-analysis:
+    runs-on: self-hosted
+    needs: [compile]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: echo "/sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner -Dsonar.host.url=http://sonar.expense.internal:9000 -Dsonar.projectKey=expense-backend -Dsonar.login=admin -Dsonar.password=Passw0rd@DevOps -Dsonar.qualitygate.wait=true"
+
+  security-checks:
+    runs-on: self-hosted
+    needs: [compile]
+    steps:
+      - uses: actions/checkout@v4
+      - name: SAST
+        run: echo "Running CheckMarx Scan"
+      - name: SCA
+        run: echo "Running CheckMarx SCA"
+
+  unit-testing:
+    runs-on: self-hosted
+    needs: [security-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: echo "Unit Testing! - 'npm test'"
+
+  integration-testing:
+    runs-on: self-hosted
+    needs: [security-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: env; echo "Integrations Testing! - 'npm verify'"
+      
+  build-docker-image:
+    needs: [unit-testing,integration-testing]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Budiling image
+        run: docker build -t 355449129696.dkr.ecr.us-east-1.amazonaws.com/expense-backend:${GITHUB_SHA} .
+
+  uploading-image:
+    needs: [build-docker-image]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker push
+        run: |
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 355449129696.dkr.ecr.us-east-1.amazonaws.com
+            docker push 355449129696.dkr.ecr.us-east-1.amazonaws.com/expense-backend:${GITHUB_SHA}
+            
+
+  scan-and-decide:
+    needs: [uploading-image]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: ECR Scan
+        run: |
+            aws ecr start-image-scan  --repository-name expense-backend --image-id imageTag=${GITHUB_SHA}
+            aws ecr wait image-scan-complete  --repository-name expense-backend --image-id imageTag=${GITHUB_SHA}
+            COUNT=`aws ecr describe-image-scan-findings --repository-name expense-backend --image-id imageTag=${GITHUB_SHA} --query 'imageScanFindings.findingSeverityCounts.CRITICAL'`
+            sudo docker rmi -f 355449129696.dkr.ecr.us-east-1.amazonaws.com/expense-backend:${GITHUB_SHA}
+            if [ ${COUNT} -gt 0 ] ; then echo "CRITICAL FINDINGS ${COUNT} - Fix them" ; exit 1 ; fi 
+            
+        
+  dev-deployment:
+    runs-on: self-hosted
+    needs: [scan-and-decide]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout expense-helm repo 
+        uses: actions/checkout@v4
+        with:
+          repository: b58-clouddevops/expense-helm
+          path: ./
+      - name: Authenticating and Deployment to cluster
+        run: bash ./deploy.sh dev backend ${GITHUB_SHA}
+
+  qa-deployment:
+    runs-on: self-hosted
+    needs: [dev-deployment]
+    environment: qa
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticating to cluster
+        run: echo "bash ./deploy.sh qa"
+
+  functional-testing:
+    runs-on: self-hosted
+    needs: [qa-deployment]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+  endtoend-testing:
+    needs: [qa-deployment]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+  prod-deployment:
+    needs: [endtoend-testing, functional-testing]
+    runs-on: self-hosted
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticating to cluster
+        run: echo "bash ./deploy.sh prod"
+
+# Test Comment
