@@ -14,6 +14,7 @@ jobs:
         run: hostname
 
 # Make sure you create gh secret to host the vault token
+#https://github.com/hashicorp/vault-action/
   get-sonar-passwrd:
     runs-on: self-hosted
     needs: [compile]
@@ -36,7 +37,7 @@ jobs:
       - name: Run a one-line script
         run: echo "/sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner -Dsonar.host.url=http://sonar.expense.internal:9000 -Dsonar.projectKey=expense-backend -Dsonar.login=admin -Dsonar.password=Passw0rd@DevOps -Dsonar.qualitygate.wait=true"
 
-  security-checks:
+  security-checks-sast-sca:
     runs-on: self-hosted
     needs: [compile]
     steps:
@@ -48,7 +49,7 @@ jobs:
 
   unit-testing:
     runs-on: self-hosted
-    needs: [security-checks]
+    needs: [security-checks-sast-sca]
     steps:
       - uses: actions/checkout@v4
       - name: Run a one-line script
@@ -56,7 +57,7 @@ jobs:
 
   integration-testing:
     runs-on: self-hosted
-    needs: [security-checks]
+    needs: [security-checks-sast-sca]
     steps:
       - uses: actions/checkout@v4
       - name: Run a one-line script
