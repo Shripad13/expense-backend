@@ -24,7 +24,7 @@ jobs:
         uses: hashicorp/vault-action@v2
         with:
             url: https://vault.expense.internal:8200
-            token: ${{ secrets.VAULT_TOKEN }}
+            token: ${{ secrets.VAULT_TOKEN }}            
             tlsSkipVerify: true
             secrets: |
                 infra-secrets/data/sonarqube password | sonar_password;
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run a one-line script
         #run: echo "/sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner -Dsonar.host.url=http://sonar.expense.internal:9000 -Dsonar.projectKey=expense-backend -Dsonar.login=admin -Dsonar.password=Passw0rd@DevOps -Dsonar.qualitygate.wait=true"
-        run: echo "/sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner -Dsonar.host.url=http://sonar.expense.internal:9000 -Dsonar.projectKey=expense-backend -Dsonar.login=admin -Dsonar.password=${{secrets.sonar_password}} -Dsonar.qualitygate.wait=true"
+        run: echo "/sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner -Dsonar.host.url=http://sonar.expense.internal:9000 -Dsonar.projectKey=expense-backend -Dsonar.login=admin -Dsonar.password=${{ secrets.sonar_password }} -Dsonar.qualitygate.wait=true"
 
 
   security-checks-sast-sca:
